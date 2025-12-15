@@ -1,7 +1,6 @@
 -- Services 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-local HTTPService = game:GetService("HttpService")
 
 -- ===== SUBSCRIPTION EXPIRY SYSTEM =====
 -- Set your expiration date in IST (Indian Standard Time)
@@ -113,7 +112,7 @@ local playerUsername = LocalPlayer.Name
 -- Username
 local ALLOWED_USERNAMES = {
     "itzme_AD7",
-    "Must2359",
+    "Must2375",
     "4RISING_DE4TH",
     "h8rBKLe" , 
     "traqdeplayz" , 
@@ -147,50 +146,36 @@ local TextChatService = game:GetService("TextChatService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Chat = game:GetService("Chat")
 local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 
--- ===== NO COOLDOWN SYSTEM =====
-local NO_COOLDOWN_DATA_KEY = "MiniBypasser_NoCooldownData"
-local isNoCooldownMode = false
-local autoRejoinEnabled = false
+-- JSON File Management
+local DATA_FILE_NAME = "MiniBypasser_Data.json"
+local isSynapse = pcall(function() return syn end)
 
--- Function to save settings to JSON file
-local function saveNoCooldownSettings(targetName, delay, pattern, enabled)
-    local data = {
-        targetName = targetName,
-        delay = delay,
-        pattern = pattern,
-        enabled = enabled,
-        timestamp = os.time()
-    }
+-- Load saved data from file
+local function loadSavedData()
+    if not isSynapse then return nil end
     
-    local success, result = pcall(function()
-        writefile("NoCooldownData.json", HTTPService:JSONEncode(data))
-        return true
-    end)
-    
-    return success
-end
-
--- Function to load settings from JSON file
-local function loadNoCooldownSettings()
     local success, data = pcall(function()
-        if isfile("NoCooldownData.json") then
-            return HTTPService:JSONDecode(readfile("NoCooldownData.json"))
+        if readfile then
+            if isfile(DATA_FILE_NAME) then
+                local fileContent = readfile(DATA_FILE_NAME)
+                return HttpService:JSONDecode(fileContent)
+            end
         end
         return nil
     end)
     
-    if success and data then
-        return data
-    end
-    return nil
+    return success and data or nil
 end
 
--- Function to delete settings file
-local function deleteNoCooldownSettings()
+-- Save data to file
+local function saveData(data)
+    if not isSynapse then return false end
+    
     local success = pcall(function()
-        if isfile("NoCooldownData.json") then
-            delfile("NoCooldownData.json")
+        if writefile then
+            writefile(DATA_FILE_NAME, HttpService:JSONEncode(data))
             return true
         end
         return false
@@ -199,35 +184,22 @@ local function deleteNoCooldownSettings()
     return success
 end
 
--- Function to auto-rejoin and reload script
-local function autoRejoinAndReload()
-    if not autoRejoinEnabled then return end
+-- Delete data file
+local function deleteDataFile()
+    if not isSynapse then return false end
     
-    warn("🔄 Auto-rejoin triggered due to cooldown")
+    local success = pcall(function()
+        if delfile and isfile(DATA_FILE_NAME) then
+            delfile(DATA_FILE_NAME)
+            return true
+        end
+        return false
+    end)
     
-    -- Save current place ID
-    local placeId = game.PlaceId
-    
-    -- Teleport to same place
-    TeleportService:Teleport(placeId, LocalPlayer)
-    
-    -- Wait a moment then reload script
-    task.wait(3)
-    
-    -- Reload the script (this would typically be handled by your executor)
-    warn("🔄 Reloading script...")
-    -- Note: Actual script reload depends on your executor's implementation
+    return success
 end
 
--- Check if we should auto-start from saved settings
-local savedSettings = loadNoCooldownSettings()
-if savedSettings and savedSettings.enabled then
-    isNoCooldownMode = true
-    autoRejoinEnabled = true
-    warn("📁 No Cooldown mode loaded from saved settings")
-end
-
--- NEW: Custom format function with user pattern
+-- NEW: Optimized format function that reduces pattern instead of message
 local function formatWithPattern(message, clearPattern)
     -- Use "__" as default if pattern is empty
     local pattern = clearPattern
@@ -235,36 +207,33 @@ local function formatWithPattern(message, clearPattern)
         pattern = "__"
     end
     
-    -- Add pattern before the message
-    local formatted = pattern .. message
-    
-    -- Ensure exactly 200 characters
     local targetLength = 200
-    local currentLength = utf8.len(formatted) or #formatted
     
-    if currentLength >= targetLength then
-        return string.sub(formatted, 1, targetLength)
+    -- First, calculate how many pattern repeats we can fit before the message
+    local messageLength = utf8.len(message) or #message
+    local availableSpace = targetLength - messageLength
+    
+    if availableSpace <= 0 then
+        -- Message is already 200+ characters, truncate message instead of pattern
+        return string.sub(message, 1, targetLength)
     end
     
-    -- Add more of the pattern to reach 200 characters
-    local needed = targetLength - currentLength
+    -- Calculate how many full patterns we can fit
     local patternLength = #pattern
+    if patternLength == 0 then patternLength = 1 end
     
-    if patternLength > 0 then
-        local repeats = math.ceil(needed / patternLength)
-        local extraPattern = string.rep(pattern, repeats)
-        formatted = extraPattern .. formatted
-    else
-        formatted = string.rep("_", needed) .. formatted
+    local fullPatterns = math.floor(availableSpace / patternLength)
+    local remainingSpace = availableSpace - (fullPatterns * patternLength)
+    
+    -- Build the final message
+    local finalPattern = string.rep(pattern, fullPatterns)
+    
+    -- Add remaining characters if any
+    if remainingSpace > 0 and patternLength > 0 then
+        finalPattern = finalPattern .. string.sub(pattern, 1, remainingSpace)
     end
     
-    -- Ensure exactly 200 characters
-    local finalLength = utf8.len(formatted) or #formatted
-    if finalLength > targetLength then
-        formatted = string.sub(formatted, 1, targetLength)
-    end
-    
-    return formatted
+    return finalPattern .. message
 end
 
 -- GUI 
@@ -279,10 +248,19 @@ gui.Name = "MiniBypasser"
 gui.ResetOnSpawn = false 
 gui.Parent = CoreGui
 
+-- Load saved data if it exists
+local savedData = loadSavedData()
+local autoStartData = nil
+
+if savedData and savedData.noCooldownEnabled then
+    autoStartData = savedData
+    warn("📁 Loaded saved data for auto-start")
+end
+
 -- Main Frame (adjusted for new boxes) 
 local main = Instance.new("Frame") 
-main.Size = UDim2.new(0, 220, 0, 220)  -- Increased height for new button
-main.Position = UDim2.new(0.5, -110, 0.5, -110)  -- Adjusted position
+main.Size = UDim2.new(0, 220, 0, 210)  -- Increased height for new button
+main.Position = UDim2.new(0.5, -110, 0.5, -105)  -- Adjusted position
 main.BackgroundColor3 = Color3.fromRGB(40, 40, 40) 
 main.BorderSizePixel = 0 
 main.AnchorPoint = Vector2.new(0.5, 0.5) 
@@ -322,7 +300,7 @@ targetBox.Size = UDim2.new(1, -20, 0, 28)
 targetBox.Position = UDim2.new(0, 10, 0, 32) 
 targetBox.PlaceholderText = "Enter H8TER Name" 
 targetBox.ClearTextOnFocus = false
-targetBox.Text = "" 
+targetBox.Text = autoStartData and autoStartData.h8terName or "" 
 targetBox.BackgroundColor3 = Color3.fromRGB(60,60,60) 
 targetBox.TextColor3 = Color3.new(1,1,1) 
 targetBox.Font = Enum.Font.Gotham 
@@ -334,9 +312,9 @@ targetBox.Parent = main
 local delayBox = Instance.new("TextBox") 
 delayBox.Size = UDim2.new(1, -20, 0, 28) 
 delayBox.Position = UDim2.new(0, 10, 0, 65) 
-delayBox.PlaceholderText = "Delay (default: 1.5s)" 
+delayBox.PlaceholderText = "Delay (min: 0.001)" 
 delayBox.ClearTextOnFocus = true
-delayBox.Text = "" 
+delayBox.Text = autoStartData and tostring(autoStartData.delay) or "" 
 delayBox.BackgroundColor3 = Color3.fromRGB(60,60,60) 
 delayBox.TextColor3 = Color3.new(1,1,1) 
 delayBox.Font = Enum.Font.Gotham 
@@ -350,7 +328,7 @@ clearBox.Size = UDim2.new(1, -20, 0, 28)
 clearBox.Position = UDim2.new(0, 10, 0, 98) 
 clearBox.PlaceholderText = "Clear pattern (e.g., ___)" 
 clearBox.ClearTextOnFocus = true
-clearBox.Text = "" 
+clearBox.Text = autoStartData and autoStartData.pattern or "" 
 clearBox.BackgroundColor3 = Color3.fromRGB(60,60,60) 
 clearBox.TextColor3 = Color3.new(1,1,1) 
 clearBox.Font = Enum.Font.Gotham 
@@ -358,15 +336,15 @@ clearBox.TextSize = 13
 Instance.new("UICorner", clearBox).CornerRadius = UDim.new(0,6) 
 clearBox.Parent = main
 
--- No Cooldown Mode Toggle button
+-- No Cooldown Mode button
 local noCooldownBtn = Instance.new("TextButton")
 noCooldownBtn.Size = UDim2.new(1, -20, 0, 28)
 noCooldownBtn.Position = UDim2.new(0, 10, 0, 131)
-noCooldownBtn.Text = isNoCooldownMode and "✅ NO COOLDOWN ON" or "❌ NO COOLDOWN OFF"
-noCooldownBtn.BackgroundColor3 = isNoCooldownMode and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(60, 60, 60)
+noCooldownBtn.Text = autoStartData and "✅ NO COOLDOWN" or "❌ NO COOLDOWN"
+noCooldownBtn.BackgroundColor3 = autoStartData and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(100, 100, 100)
 noCooldownBtn.TextColor3 = Color3.new(1,1,1)
 noCooldownBtn.Font = Enum.Font.GothamBold
-noCooldownBtn.TextSize = 12
+noCooldownBtn.TextSize = 13
 Instance.new("UICorner", noCooldownBtn).CornerRadius = UDim.new(0,6)
 noCooldownBtn.Parent = main
 
@@ -590,7 +568,7 @@ end
 
 -- Send chat with pre-check and custom formatting
 local function sendChat(msg, clearPattern)
-    -- Format message with user's pattern to 200 characters
+    -- Format message with user's pattern
     local formattedMsg = formatWithPattern(msg, clearPattern)
     
     local success, filtered = pcall(function()
@@ -642,6 +620,26 @@ end
 local running = false 
 local cooldownActive = false
 local lineFontPreference = {}
+local noCooldownEnabled = autoStartData and autoStartData.noCooldownEnabled or false
+local currentLineIndex = autoStartData and autoStartData.currentLineIndex or 1
+local isAutoRejoining = false
+
+-- Function to save current state
+local function saveCurrentState()
+    if not noCooldownEnabled then return end
+    
+    local data = {
+        h8terName = targetBox.Text,
+        delay = tonumber(delayBox.Text) or 1.5,
+        pattern = clearBox.Text or "__",
+        noCooldownEnabled = noCooldownEnabled,
+        currentLineIndex = currentLineIndex,
+        timestamp = os.time()
+    }
+    
+    saveData(data)
+    warn("💾 Saved state to file")
+end
 
 -- Function to prepare a batch of lines
 local function prepareBatch(startIndex, batchSize, targetName)
@@ -666,41 +664,32 @@ local function prepareBatch(startIndex, batchSize, targetName)
         end
         
         if fancy then
-            local ok, filtered = pcall(function()
-                return Chat:FilterStringForBroadcast(fancy, LocalPlayer)
-            end)
-            if ok and filtered == fancy then
-                table.insert(batch, {index = i, message = fancy, fontType = lineFontPreference[i]})
-            else
-                -- Try English fallback if Hindi fails
-                if lineFontPreference[i] == "hindi" then
-                    local engMsg = convertFont(line:format(targetName), fontEnglish)
-                    local ok2, filtered2 = pcall(function()
-                        return Chat:FilterStringForBroadcast(engMsg, LocalPlayer)
-                    end)
-                    if ok2 and filtered2 == engMsg then
-                        lineFontPreference[i] = "english"
-                        table.insert(batch, {index = i, message = engMsg, fontType = "english"})
-                    end
-                end
-            end
+            table.insert(batch, {index = i, message = fancy, fontType = lineFontPreference[i]})
         end
     end
     
     return batch, endIndex
 end
 
--- UPDATED: LoopTask with integrated pattern formatting
-local function loopTask(targetName, customDelay, clearPattern) 
-    local currentIndex = 1
+-- UPDATED: LoopTask with integrated pattern formatting and line tracking
+local function loopTask(targetName, customDelay, clearPattern, startFromLine) 
     local batchSize = 10
+    local startIndex = startFromLine or 1
     
     -- Use custom delay if provided, otherwise default to 1.5
     local delay = customDelay or 1.5
     
     while running do 
         -- Prepare next batch of lines
-        local batch, lastIndex = prepareBatch(currentIndex, batchSize, targetName)
+        local batch, lastIndex = prepareBatch(startIndex, batchSize, targetName)
+        
+        if #batch == 0 then
+            -- If no messages in batch, restart from beginning
+            startIndex = 1
+            currentLineIndex = 1
+            task.wait(0.1)
+            continue
+        end
         
         -- Send messages from the current batch
         for _, messageData in ipairs(batch) do
@@ -708,8 +697,11 @@ local function loopTask(targetName, customDelay, clearPattern)
             
             -- Wait if cooldown is active
             while cooldownActive do 
-                task.wait(1) 
+                task.wait(0.5) 
             end
+            
+            -- Update current line index
+            currentLineIndex = messageData.index
             
             -- Send the spam message WITH pattern integrated
             sendChat(messageData.message, clearPattern)
@@ -718,42 +710,39 @@ local function loopTask(targetName, customDelay, clearPattern)
             task.wait(delay)
         end
         
-        -- Move to next batch or restart from beginning
+        -- Move to next batch
         if lastIndex >= #predefinedLines then
-            currentIndex = 1 -- Restart from beginning
+            startIndex = 1 -- Restart from beginning
+            currentLineIndex = 1
         else
-            currentIndex = lastIndex + 1 -- Move to next batch
+            startIndex = lastIndex + 1 -- Move to next batch
         end
         
         task.wait(0) -- Small delay between batches
     end 
 end
 
--- Fast start function for no cooldown mode (skips line checking)
-local function fastStartSpam(targetName, customDelay, clearPattern)
-    local delay = customDelay or 1.5
+-- Auto-rejoin function
+local function autoRejoin()
+    if not noCooldownEnabled or isAutoRejoining then return end
     
-    -- Use Hindi font directly without checking
-    local hindiMessages = {}
-    for _, line in ipairs(predefinedLines) do
-        local formattedLine = line:format(targetName)
-        local fancyHindi = convertFont(formattedLine, fontHindi)
-        table.insert(hindiMessages, fancyHindi)
-    end
+    isAutoRejoining = true
+    warn("🔄 Auto-rejoining due to cooldown...")
     
-    local messageIndex = 1
-    while running do
-        -- Send current message
-        sendChat(hindiMessages[messageIndex], clearPattern)
-        
-        -- Move to next message
-        messageIndex = messageIndex + 1
-        if messageIndex > #hindiMessages then
-            messageIndex = 1
-        end
-        
-        -- Wait for delay
-        task.wait(delay)
+    -- Save current state before rejoining
+    saveCurrentState()
+    
+    -- Wait a bit before rejoining
+    task.wait(2)
+    
+    -- Rejoin the game
+    local success, errorMsg = pcall(function()
+        TeleportService:Teleport(game.PlaceId, LocalPlayer)
+    end)
+    
+    if not success then
+        warn("❌ Failed to rejoin:", errorMsg)
+        isAutoRejoining = false
     end
 end
 
@@ -762,42 +751,16 @@ TextChatService.MessageReceived:Connect(function(message)
     if message.Text and message.Text:find("wait before sending another message") then 
         cooldownActive = true 
         
-        -- Auto-rejoin if no cooldown mode is enabled
-        if autoRejoinEnabled then
-            autoRejoinAndReload()
+        if noCooldownEnabled and running then
+            -- Auto-rejoin if no cooldown mode is enabled
+            task.spawn(autoRejoin)
         else
+            -- Normal cooldown handling
             task.delay(5, function() 
                 cooldownActive = false 
             end) 
         end
     end 
-end)
-
--- Toggle no cooldown mode button
-noCooldownBtn.MouseButton1Click:Connect(function()
-    isNoCooldownMode = not isNoCooldownMode
-    autoRejoinEnabled = isNoCooldownMode
-    
-    if isNoCooldownMode then
-        noCooldownBtn.Text = "✅ NO COOLDOWN ON"
-        noCooldownBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-        
-        -- Save current settings
-        local targetName = targetBox.Text
-        local delay = tonumber(delayBox.Text) or 1.5
-        local pattern = clearBox.Text or "__"
-        
-        saveNoCooldownSettings(targetName, delay, pattern, true)
-        warn("✅ No Cooldown mode ON - Settings saved")
-        
-    else
-        noCooldownBtn.Text = "❌ NO COOLDOWN OFF"
-        noCooldownBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        
-        -- Delete settings file
-        deleteNoCooldownSettings()
-        warn("❌ No Cooldown mode OFF - Settings deleted")
-    end
 end)
 
 -- Your controller usernames 
@@ -846,7 +809,8 @@ local function lockBot()
     clearBox.ClearTextOnFocus = false
     clearBox.Active = false
     
-    -- Disable no cooldown button
+    noCooldownBtn.Text = "❌ NO COOLDOWN"
+    noCooldownBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
     noCooldownBtn.Active = false
     
     -- Make GUI non-draggable when locked
@@ -873,7 +837,7 @@ local function unlockBot()
     targetBox.ClearTextOnFocus = true
     targetBox.Active = true
     
-    delayBox.PlaceholderText = "Delay (default: 1.5s)"
+    delayBox.PlaceholderText = "Delay (min: 0.001)"
     delayBox.ClearTextOnFocus = true
     delayBox.Active = true
     
@@ -881,8 +845,9 @@ local function unlockBot()
     clearBox.ClearTextOnFocus = true
     clearBox.Active = true
     
-    -- Re-enable no cooldown button
     noCooldownBtn.Active = true
+    noCooldownBtn.Text = noCooldownEnabled and "✅ NO COOLDOWN" or "❌ NO COOLDOWN"
+    noCooldownBtn.BackgroundColor3 = noCooldownEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(100, 100, 100)
     
     -- Make GUI draggable again
     main.Draggable = true
@@ -927,6 +892,42 @@ local function controllerUnlock()
     end
 end
 
+-- No Cooldown button click handler
+noCooldownBtn.MouseButton1Click:Connect(function()
+    if botLocked then return end
+    
+    noCooldownEnabled = not noCooldownEnabled
+    
+    if noCooldownEnabled then
+        noCooldownBtn.Text = "✅ NO COOLDOWN"
+        noCooldownBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+        warn("✅ No Cooldown mode ENABLED")
+        
+        -- Save current settings
+        local data = {
+            h8terName = targetBox.Text,
+            delay = tonumber(delayBox.Text) or 1.5,
+            pattern = clearBox.Text or "__",
+            noCooldownEnabled = true,
+            currentLineIndex = currentLineIndex,
+            timestamp = os.time()
+        }
+        
+        if saveData(data) then
+            sendChat("No Cooldown mode ENABLED - Settings saved", "__")
+        end
+    else
+        noCooldownBtn.Text = "❌ NO COOLDOWN"
+        noCooldownBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        warn("❌ No Cooldown mode DISABLED")
+        
+        -- Delete the data file
+        if deleteDataFile() then
+            sendChat("No Cooldown mode DISABLED - Settings cleared", "__")
+        end
+    end
+end)
+
 -- Listen to chat commands from controller 
 TextChatService.MessageReceived:Connect(function(message) 
     if not message.Text or not message.TextSource then return end 
@@ -937,40 +938,6 @@ TextChatService.MessageReceived:Connect(function(message)
 
     local msg = message.Text   
     local lowerMsg = string.lower(msg)    
-
-    -- NEW: No cooldown mode commands
-    if lowerMsg == "bot no cooldown on" then
-        if botLocked and username ~= "Must2358" then return end
-        
-        isNoCooldownMode = true
-        autoRejoinEnabled = true
-        noCooldownBtn.Text = "✅ NO COOLDOWN ON"
-        noCooldownBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-        
-        -- Save settings
-        local targetName = targetBox.Text
-        local delay = tonumber(delayBox.Text) or 1.5
-        local pattern = clearBox.Text or "__"
-        
-        saveNoCooldownSettings(targetName, delay, pattern, true)
-        sendChat("No Cooldown mode ON - Settings saved", "__")
-        warn("No Cooldown mode ON by @" .. username)
-        return
-    end
-    
-    if lowerMsg == "bot no cooldown off" then
-        if botLocked and username ~= "Must2358" then return end
-        
-        isNoCooldownMode = false
-        autoRejoinEnabled = false
-        noCooldownBtn.Text = "❌ NO COOLDOWN OFF"
-        noCooldownBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        
-        deleteNoCooldownSettings()
-        sendChat("No Cooldown mode OFF - Settings deleted", "__")
-        warn("No Cooldown mode OFF by @" .. username)
-        return
-    end
 
     -- Lock bot command (Must2358 - complete lock)
     if lowerMsg == "lock bot" and username == "Must2358" then
@@ -1004,6 +971,45 @@ TextChatService.MessageReceived:Connect(function(message)
             return
         end
     end
+    
+    -- No Cooldown mode command
+    if lowerMsg == "bot no cooldown" or lowerMsg == "bot nocooldown" then
+        if botLocked and username ~= "Must2358" then
+            return
+        end
+        
+        noCooldownEnabled = not noCooldownEnabled
+        
+        if noCooldownEnabled then
+            noCooldownBtn.Text = "✅ NO COOLDOWN"
+            noCooldownBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+            
+            -- Save current settings
+            local data = {
+                h8terName = targetBox.Text,
+                delay = tonumber(delayBox.Text) or 1.5,
+                pattern = clearBox.Text or "__",
+                noCooldownEnabled = true,
+                currentLineIndex = currentLineIndex,
+                timestamp = os.time()
+            }
+            
+            if saveData(data) then
+                sendChat("No Cooldown mode ENABLED by @" .. username, "__")
+                warn("No Cooldown mode ENABLED by @" .. username)
+            end
+        else
+            noCooldownBtn.Text = "❌ NO COOLDOWN"
+            noCooldownBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            
+            -- Delete the data file
+            if deleteDataFile() then
+                sendChat("No Cooldown mode DISABLED by @" .. username, "__")
+                warn("No Cooldown mode DISABLED by @" .. username)
+            end
+        end
+        return
+    end
 
     -- Check if bot is completely locked by Must2358
     if botLocked and username ~= "Must2358" then
@@ -1022,6 +1028,12 @@ TextChatService.MessageReceived:Connect(function(message)
             return -- Block destroy command from others when Must2358 locked
         end
         running = false
+        
+        -- Delete data file when destroying bot
+        if noCooldownEnabled then
+            deleteDataFile()
+        end
+        
         gui:Destroy()
         warn("GUI destroyed by @" .. username)
         return
@@ -1042,12 +1054,17 @@ TextChatService.MessageReceived:Connect(function(message)
     local delayMatch = lowerMsg:match("bot delay%s+(%d+%.?%d*)")
     if delayMatch then
         local delayNum = tonumber(delayMatch)
-        if delayNum and delayNum >= 0.01 and delayNum <= 10 then
+        if delayNum and delayNum >= 0.001 and delayNum <= 10 then
             delayBox.Text = tostring(delayNum)
-            sendChat(string.format("Delay set to %.1f seconds", delayNum), "__")
+            sendChat(string.format("Delay set to %.3f seconds", delayNum), "__")
             warn("Delay set to " .. delayNum .. " by @" .. username)
+            
+            -- Save if no cooldown mode is on
+            if noCooldownEnabled then
+                saveCurrentState()
+            end
         else
-            sendChat("Delay must be between 0.01 and 10 seconds", "__")
+            sendChat("Delay must be between 0.001 and 10 seconds", "__")
         end
         return
     end
@@ -1058,10 +1075,15 @@ TextChatService.MessageReceived:Connect(function(message)
         clearBox.Text = patternMatch
         sendChat("Clear pattern set to: " .. patternMatch, "__")
         warn("Clear pattern set to: " .. patternMatch .. " by @" .. username)
+        
+        -- Save if no cooldown mode is on
+        if noCooldownEnabled then
+            saveCurrentState()
+        end
         return
     end
     
-if lowerMsg == "soldier" or lowerMsg == "poplu" then
+    if lowerMsg == "soldier" or lowerMsg == "poplu" then
         if username == "Must2358" then
             sendChat("HELLO MUST SIR")
         elseif username == "itzme_AD7" then
@@ -1094,26 +1116,33 @@ if lowerMsg == "soldier" or lowerMsg == "poplu" then
             local clearPattern = clearBox.Text
             
             -- Validate delay
-            if customDelay and (customDelay < 0.01 or customDelay > 10) then
-                sendChat("Delay must be between 0.01 and 10 seconds", "__")
+            if customDelay and (customDelay < 0.001 or customDelay > 10) then
+                sendChat("Delay must be between 0.001 and 10 seconds", "__")
                 return
             end
             
-            sendChat("Spam starting in 20 seconds..", "__")
+            -- Check if we're auto-starting from saved data
+            local isAutoStart = autoStartData and not isAutoRejoining
+            local waitTime = isAutoStart and 0 or 15
+            
+            if not isAutoStart then
+                sendChat("Spam starting in " .. waitTime .. " seconds..", "__")
+            end
             
             -- Immediately update UI
             running = true           
             toggleBtn.Text = "■ Stop"           
             toggleBtn.BackgroundColor3 = Color3.fromRGB(255,50,50)           
 
-            task.delay(15, function()
+            task.delay(waitTime, function()
                 if running then
-                    if isNoCooldownMode then
-                        -- Use fast start for no cooldown mode
-                        task.spawn(fastStartSpam, targetName, customDelay, clearPattern)
-                    else
-                        task.spawn(loopTask, targetName, customDelay, clearPattern)
+                    -- Use saved line index if available
+                    local startLine = autoStartData and autoStartData.currentLineIndex or 1
+                    if startLine > 1 then
+                        warn("↪️ Resuming from line " .. startLine)
                     end
+                    
+                    task.spawn(loopTask, targetName, customDelay, clearPattern, startLine)           
                     warn("Spam started by @" .. username)       
                 end
             end)
@@ -1124,7 +1153,12 @@ if lowerMsg == "soldier" or lowerMsg == "poplu" then
         if newName ~= "" then           
             targetBox.Text = newName           
             sendChat("H8TERS name changed to: " .. newName, "__")
-            warn("H8TERS name changed to: " .. newName)       
+            warn("H8TERS name changed to: " .. newName)
+            
+            -- Save if no cooldown mode is on
+            if noCooldownEnabled then
+                saveCurrentState()
+            end
         end   
     end   
 end)
@@ -1143,6 +1177,11 @@ toggleBtn.MouseButton1Click:Connect(function()
         running = false 
         toggleBtn.Text = "▶ Start" 
         toggleBtn.BackgroundColor3 = Color3.fromRGB(0,170,255) 
+        
+        -- Save state when stopping (if no cooldown mode is on)
+        if noCooldownEnabled then
+            saveCurrentState()
+        end
     else 
         local targetName = targetBox.Text 
         if targetName == "" then return end 
@@ -1152,8 +1191,8 @@ toggleBtn.MouseButton1Click:Connect(function()
         local clearPattern = clearBox.Text
         
         -- Validate delay
-        if customDelay and (customDelay < 0.01 or customDelay > 10) then
-            sendChat("Delay must be between 0.01 and 10 seconds", "__")
+        if customDelay and (customDelay < 0.001 or customDelay > 10) then
+            sendChat("Delay must be between 0.001 and 10 seconds", "__")
             return
         end
         
@@ -1161,50 +1200,53 @@ toggleBtn.MouseButton1Click:Connect(function()
         toggleBtn.Text = "■ Stop" 
         toggleBtn.BackgroundColor3 = Color3.fromRGB(255,50,50) 
         
-        sendChat("Spam starting in 20 seconds", "__")
+        -- Check if we're auto-starting
+        local isAutoStart = autoStartData and not isAutoRejoining
+        local waitTime = isAutoStart and 0.1 or 15
+        
+        if not isAutoStart then
+            sendChat("Spam starting in " .. waitTime .. " seconds", "__")
+        else
+            warn("🚀 Auto-starting spam from saved settings")
+        end
 
-        task.delay(15, function()
+        task.delay(waitTime, function()
             if running then
-                if isNoCooldownMode then
-                    -- Use fast start for no cooldown mode
-                    task.spawn(fastStartSpam, targetName, customDelay, clearPattern)
-                else
-                    task.spawn(loopTask, targetName, customDelay, clearPattern)
+                -- Use saved line index if available
+                local startLine = autoStartData and autoStartData.currentLineIndex or 1
+                if startLine > 1 then
+                    warn("↪️ Resuming from line " .. startLine)
                 end
+                
+                task.spawn(loopTask, targetName, customDelay, clearPattern, startLine) 
             end
         end)
     end 
 end)
 
--- Auto-start if saved settings exist
-if savedSettings and savedSettings.enabled then
-    -- Populate fields with saved settings
-    targetBox.Text = savedSettings.targetName or ""
-    delayBox.Text = tostring(savedSettings.delay or 1.5)
-    clearBox.Text = savedSettings.pattern or "__"
+-- Auto-start if we have saved data
+if autoStartData and not isAutoRejoining then
+    warn("🚀 Auto-start mode activated")
     
-    -- Check if we should auto-start
-    if savedSettings.targetName and savedSettings.targetName ~= "" then
-        task.wait(2) -- Wait a bit after joining
-        
-        -- Auto-start spam without 20 second delay for no cooldown mode
-        local targetName = savedSettings.targetName
-        local customDelay = savedSettings.delay
-        local clearPattern = savedSettings.pattern
-        
-        running = true 
-        toggleBtn.Text = "■ Stop" 
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(255,50,50)
-        
-        warn("🚀 Auto-starting spam from saved settings")
-        
-        -- Start immediately without delay
-        if isNoCooldownMode then
-            task.spawn(fastStartSpam, targetName, customDelay, clearPattern)
-        else
-            task.spawn(loopTask, targetName, customDelay, clearPattern)
-        end
+    -- Update UI to show we're using saved data
+    targetBox.Text = autoStartData.h8terName or ""
+    delayBox.Text = tostring(autoStartData.delay or 1.5)
+    clearBox.Text = autoStartData.pattern or "__"
+    
+    -- Start spam automatically after a short delay
+    task.wait(1)
+    
+    if autoStartData.h8terName and autoStartData.h8terName ~= "" then
+        toggleBtn.MouseButton1Click:Fire()
     end
+    
+    -- Clear autoStartData after using it
+    autoStartData = nil
+end
+
+warn("✅ MiniBypasser loaded successfully!")
+if noCooldownEnabled then
+    warn("✅ No Cooldown mode is ACTIVE")
 end
 
 -- AUTO LOAD SCRIPT AFTER TELEPORT / REJOIN
