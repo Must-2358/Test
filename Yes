@@ -164,7 +164,7 @@ local function saveNoCooldownSettings(targetName, delay, pattern, enabled)
     }
     
     local success, result = pcall(function()
-        writefile("MiniBypasser_NoCooldown.json", HTTPService:JSONEncode(data))
+        writefile("NoCooldownData.json", HTTPService:JSONEncode(data))
         return true
     end)
     
@@ -174,8 +174,8 @@ end
 -- Function to load settings from JSON file
 local function loadNoCooldownSettings()
     local success, data = pcall(function()
-        if isfile("MiniBypasser_NoCooldown.json") then
-            return HTTPService:JSONDecode(readfile("MiniBypasser_NoCooldown.json"))
+        if isfile("NoCooldownData.json") then
+            return HTTPService:JSONDecode(readfile("NoCooldownData.json"))
         end
         return nil
     end)
@@ -189,8 +189,8 @@ end
 -- Function to delete settings file
 local function deleteNoCooldownSettings()
     local success = pcall(function()
-        if isfile("MiniBypasser_NoCooldown.json") then
-            delfile("MiniBypasser_NoCooldown.json")
+        if isfile("NoCooldownData.json") then
+            delfile("NoCooldownData.json")
             return true
         end
         return false
