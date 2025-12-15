@@ -914,7 +914,7 @@ noCooldownBtn.MouseButton1Click:Connect(function()
         }
         
         if saveData(data) then
-            sendChat("No Cooldown mode ENABLED - Settings saved", "__")
+            warn("No Cooldown mode ENABLED - Settings saved", "__")
         end
     else
         noCooldownBtn.Text = "❌ NO COOLDOWN"
@@ -923,7 +923,7 @@ noCooldownBtn.MouseButton1Click:Connect(function()
         
         -- Delete the data file
         if deleteDataFile() then
-            sendChat("No Cooldown mode DISABLED - Settings cleared", "__")
+            warn("No Cooldown mode DISABLED - Settings cleared", "__")
         end
     end
 end)
@@ -1233,11 +1233,41 @@ if autoStartData and not isAutoRejoining then
     delayBox.Text = tostring(autoStartData.delay or 1.5)
     clearBox.Text = autoStartData.pattern or "__"
     
-    -- Start spam automatically after a short delay
-    task.wait(1)
+    -- Check if we're coming from a cooldown rejoin
+    local isCooldownRejoin = autoStartData.wasRunning or false
     
-    if autoStartData.h8terName and autoStartData.h8terName ~= "" then
-        toggleBtn.MouseButton1Click:Fire()
+    -- Start spam automatically without delay if it was running before
+    if isCooldownRejoin and autoStartData.h8terName and autoStartData.h8terName ~= "" then
+        warn("🔄 Auto-resuming spam after cooldown rejoin")
+        
+        -- Immediately start without waiting
+        running = true 
+        toggleBtn.Text = "■ Stop" 
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(255,50,50)
+        
+        task.delay(0.5, function()
+            if running then
+                -- Use saved line index
+                local startLine = autoStartData.currentLineIndex or 1
+                if startLine > 1 then
+                    warn("↪️ Resuming from line " .. startLine)
+                end
+                
+                -- Get settings from saved data
+                local customDelay = autoStartData.delay or 1.5
+                local clearPattern = autoStartData.pattern or "__"
+                
+                task.spawn(loopTask, autoStartData.h8terName, customDelay, clearPattern, startLine) 
+                warn("✅ Spam auto-resumed after rejoin")
+            end
+        end)
+    else
+        -- Normal auto-start (not from cooldown)
+        task.wait(1)
+        
+        if autoStartData.h8terName and autoStartData.h8terName ~= "" then
+            toggleBtn.MouseButton1Click:Fire()
+        end
     end
     
     -- Clear autoStartData after using it
