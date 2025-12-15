@@ -1,3 +1,4 @@
+[file content begin]
 -- Services 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -48,10 +49,10 @@ if not isSubscriptionActive() then
     
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, 300, 0, 150)
-    frame.Position = UDim2.new(0.5, -150, 0.5, -75)
+    frame.Position = UDim2.new(0.01, -150, 0.01, -75)
     frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     frame.BorderSizePixel = 0
-    frame.AnchorPoint = Vector2.new(0.5, 0.5)
+    frame.AnchorPoint = Vector2.new(0.01, 0.01)
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
     frame.Parent = gui
     
@@ -81,7 +82,7 @@ if not isSubscriptionActive() then
     
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 100, 0, 30)
-    closeBtn.Position = UDim2.new(0.5, -50, 1, -45)
+    closeBtn.Position = UDim2.new(0.01, -50, 1, -45)
     closeBtn.Text = "CLOSE"
     closeBtn.TextColor3 = Color3.new(1, 1, 1)
     closeBtn.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
@@ -113,7 +114,7 @@ local playerUsername = LocalPlayer.Name
 -- Username
 local ALLOWED_USERNAMES = {
     "itzme_AD7",
-    "Must2359",
+    "Must2375",
     "4RISING_DE4TH",
     "h8rBKLe" , 
     "traqdeplayz" , 
@@ -154,13 +155,12 @@ local isNoCooldownMode = false
 local autoRejoinEnabled = false
 
 -- Function to save settings to JSON file
-local function saveNoCooldownSettings(targetName, delay, pattern, enabled, lastLineIndex)
+local function saveNoCooldownSettings(targetName, delay, pattern, enabled)
     local data = {
         targetName = targetName,
         delay = delay,
         pattern = pattern,
         enabled = enabled,
-        lastLineIndex = lastLineIndex or 1,
         timestamp = os.time()
     }
     
@@ -206,14 +206,6 @@ local function autoRejoinAndReload()
     
     warn("🔄 Auto-rejoin triggered due to cooldown")
     
-    -- Save current settings with current line index
-    if running and currentSpamLineIndex then
-        local targetName = targetBox.Text
-        local delay = tonumber(delayBox.Text) or 1.5
-        local pattern = clearBox.Text or "__"
-        saveNoCooldownSettings(targetName, delay, pattern, true, currentSpamLineIndex)
-    end
-    
     -- Save current place ID
     local placeId = game.PlaceId
     
@@ -236,7 +228,7 @@ if savedSettings and savedSettings.enabled then
     warn("📁 No Cooldown mode loaded from saved settings")
 end
 
--- NEW: Improved format function - reduces pattern instead of message when name is long
+-- NEW: Custom format function with user pattern
 local function formatWithPattern(message, clearPattern)
     -- Use "__" as default if pattern is empty
     local pattern = clearPattern
@@ -244,49 +236,36 @@ local function formatWithPattern(message, clearPattern)
         pattern = "__"
     end
     
-    -- Target length is 200 characters
+    -- Add pattern before the message
+    local formatted = pattern .. message
+    
+    -- Ensure exactly 200 characters
     local targetLength = 200
-    local messageLength = utf8.len(message) or #message
+    local currentLength = utf8.len(formatted) or #formatted
     
-    -- If message is already 200+ characters, just truncate it
-    if messageLength >= targetLength then
-        return string.sub(message, 1, targetLength)
+    if currentLength >= targetLength then
+        return string.sub(formatted, 1, targetLength)
     end
     
-    -- Calculate how many pattern characters we need
-    local needed = targetLength - messageLength
+    -- Add more of the pattern to reach 200 characters
+    local needed = targetLength - currentLength
+    local patternLength = #pattern
     
-    -- If we need pattern characters, add them
-    if needed > 0 then
-        local patternLength = #pattern
-        
-        if patternLength > 0 then
-            -- Calculate how many times to repeat the pattern
-            local repeats = math.ceil(needed / patternLength)
-            local fullPattern = string.rep(pattern, repeats)
-            
-            -- Combine pattern + message
-            local combined = fullPattern .. message
-            
-            -- Ensure exactly 200 characters by trimming excess pattern from the front
-            local combinedLength = utf8.len(combined) or #combined
-            
-            if combinedLength > targetLength then
-                -- Calculate how much to trim from the pattern part
-                local trimAmount = combinedLength - targetLength
-                local patternPart = string.sub(fullPattern, trimAmount + 1)
-                combined = patternPart .. message
-            end
-            
-            return combined
-        else
-            -- If pattern is empty, use underscores
-            local underscores = string.rep("_", needed)
-            return underscores .. message
-        end
+    if patternLength > 0 then
+        local repeats = math.ceil(needed / patternLength)
+        local extraPattern = string.rep(pattern, repeats)
+        formatted = extraPattern .. formatted
+    else
+        formatted = string.rep("_", needed) .. formatted
     end
     
-    return message
+    -- Ensure exactly 200 characters
+    local finalLength = utf8.len(formatted) or #formatted
+    if finalLength > targetLength then
+        formatted = string.sub(formatted, 1, targetLength)
+    end
+    
+    return formatted
 end
 
 -- GUI 
@@ -304,10 +283,10 @@ gui.Parent = CoreGui
 -- Main Frame (adjusted for new boxes) 
 local main = Instance.new("Frame") 
 main.Size = UDim2.new(0, 220, 0, 220)  -- Increased height for new button
-main.Position = UDim2.new(0.5, -110, 0.5, -110)  -- Adjusted position
+main.Position = UDim2.new(0.01, -110, 0.01, -110)  -- Adjusted position
 main.BackgroundColor3 = Color3.fromRGB(40, 40, 40) 
 main.BorderSizePixel = 0 
-main.AnchorPoint = Vector2.new(0.5, 0.5) 
+main.AnchorPoint = Vector2.new(0.01, 0.01) 
 main.Active = true 
 main.Draggable = true 
 main.Parent = gui 
@@ -356,7 +335,7 @@ targetBox.Parent = main
 local delayBox = Instance.new("TextBox") 
 delayBox.Size = UDim2.new(1, -20, 0, 28) 
 delayBox.Position = UDim2.new(0, 10, 0, 65) 
-delayBox.PlaceholderText = "Delay (0.001 to 10)" 
+delayBox.PlaceholderText = "Delay (default: 1.5s)" 
 delayBox.ClearTextOnFocus = true
 delayBox.Text = "" 
 delayBox.BackgroundColor3 = Color3.fromRGB(60,60,60) 
@@ -664,7 +643,6 @@ end
 local running = false 
 local cooldownActive = false
 local lineFontPreference = {}
-local currentSpamLineIndex = 1  -- Track current line index
 
 -- Function to prepare a batch of lines
 local function prepareBatch(startIndex, batchSize, targetName)
@@ -713,18 +691,15 @@ local function prepareBatch(startIndex, batchSize, targetName)
     return batch, endIndex
 end
 
--- UPDATED: LoopTask with integrated pattern formatting and line tracking
-local function loopTask(targetName, customDelay, clearPattern, startFromLine) 
-    local currentIndex = startFromLine or 1
+-- UPDATED: LoopTask with integrated pattern formatting
+local function loopTask(targetName, customDelay, clearPattern) 
+    local currentIndex = 1
     local batchSize = 10
     
     -- Use custom delay if provided, otherwise default to 1.5
     local delay = customDelay or 1.5
     
     while running do 
-        -- Update global line index tracker
-        currentSpamLineIndex = currentIndex
-        
         -- Prepare next batch of lines
         local batch, lastIndex = prepareBatch(currentIndex, batchSize, targetName)
         
@@ -740,9 +715,6 @@ local function loopTask(targetName, customDelay, clearPattern, startFromLine)
             -- Send the spam message WITH pattern integrated
             sendChat(messageData.message, clearPattern)
             
-            -- Update current line index after sending
-            currentSpamLineIndex = messageData.index + 1
-            
             -- Wait for the specified delay (custom or default)
             task.wait(delay)
         end
@@ -750,7 +722,6 @@ local function loopTask(targetName, customDelay, clearPattern, startFromLine)
         -- Move to next batch or restart from beginning
         if lastIndex >= #predefinedLines then
             currentIndex = 1 -- Restart from beginning
-            currentSpamLineIndex = 1
         else
             currentIndex = lastIndex + 1 -- Move to next batch
         end
@@ -760,9 +731,8 @@ local function loopTask(targetName, customDelay, clearPattern, startFromLine)
 end
 
 -- Fast start function for no cooldown mode (skips line checking)
-local function fastStartSpam(targetName, customDelay, clearPattern, startFromLine)
+local function fastStartSpam(targetName, customDelay, clearPattern)
     local delay = customDelay or 1.5
-    local currentIndex = startFromLine or 1
     
     -- Use Hindi font directly without checking
     local hindiMessages = {}
@@ -772,18 +742,15 @@ local function fastStartSpam(targetName, customDelay, clearPattern, startFromLin
         table.insert(hindiMessages, fancyHindi)
     end
     
+    local messageIndex = 1
     while running do
-        -- Update global line index tracker
-        currentSpamLineIndex = currentIndex
-        
         -- Send current message
-        sendChat(hindiMessages[currentIndex], clearPattern)
+        sendChat(hindiMessages[messageIndex], clearPattern)
         
         -- Move to next message
-        currentIndex = currentIndex + 1
-        if currentIndex > #hindiMessages then
-            currentIndex = 1
-            currentSpamLineIndex = 1
+        messageIndex = messageIndex + 1
+        if messageIndex > #hindiMessages then
+            messageIndex = 1
         end
         
         -- Wait for delay
@@ -816,14 +783,13 @@ noCooldownBtn.MouseButton1Click:Connect(function()
         noCooldownBtn.Text = "✅ NO COOLDOWN ON"
         noCooldownBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
         
-        -- Save current settings with current line index
+        -- Save current settings
         local targetName = targetBox.Text
         local delay = tonumber(delayBox.Text) or 1.5
         local pattern = clearBox.Text or "__"
-        local lastLineIndex = currentSpamLineIndex or 1
         
-        saveNoCooldownSettings(targetName, delay, pattern, true, lastLineIndex)
-        warn("✅ No Cooldown mode ON - Settings saved (Line: " .. lastLineIndex .. ")")
+        saveNoCooldownSettings(targetName, delay, pattern, true)
+        warn("✅ No Cooldown mode ON - Settings saved")
         
     else
         noCooldownBtn.Text = "❌ NO COOLDOWN OFF"
@@ -908,7 +874,7 @@ local function unlockBot()
     targetBox.ClearTextOnFocus = true
     targetBox.Active = true
     
-    delayBox.PlaceholderText = "Delay (0.001 to 10)"
+    delayBox.PlaceholderText = "Delay (default: 1.5s)"
     delayBox.ClearTextOnFocus = true
     delayBox.Active = true
     
@@ -982,15 +948,14 @@ TextChatService.MessageReceived:Connect(function(message)
         noCooldownBtn.Text = "✅ NO COOLDOWN ON"
         noCooldownBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
         
-        -- Save settings with current line index
+        -- Save settings
         local targetName = targetBox.Text
         local delay = tonumber(delayBox.Text) or 1.5
         local pattern = clearBox.Text or "__"
-        local lastLineIndex = currentSpamLineIndex or 1
         
-        saveNoCooldownSettings(targetName, delay, pattern, true, lastLineIndex)
-        sendChat("No Cooldown mode ON - Settings saved (Line: " .. lastLineIndex .. ")", "__")
-        warn("No Cooldown mode ON by @" .. username .. " (Line: " .. lastLineIndex .. ")")
+        saveNoCooldownSettings(targetName, delay, pattern, true)
+        sendChat("No Cooldown mode ON - Settings saved", "__")
+        warn("No Cooldown mode ON by @" .. username)
         return
     end
     
@@ -1074,16 +1039,16 @@ TextChatService.MessageReceived:Connect(function(message)
         return
     end
     
-    -- UPDATED: Set delay command - now accepts 0.001 to 10
+    -- NEW: Set delay command
     local delayMatch = lowerMsg:match("bot delay%s+(%d+%.?%d*)")
     if delayMatch then
         local delayNum = tonumber(delayMatch)
-        if delayNum and delayNum >= 0.001 and delayNum <= 10 then
+        if delayNum and delayNum >= 0.01 and delayNum <= 10 then
             delayBox.Text = tostring(delayNum)
-            sendChat(string.format("Delay set to %.3f seconds", delayNum), "__")
+            sendChat(string.format("Delay set to %.1f seconds", delayNum), "__")
             warn("Delay set to " .. delayNum .. " by @" .. username)
         else
-            sendChat("Delay must be between 0.001 and 10 seconds", "__")
+            sendChat("Delay must be between 0.01 and 10 seconds", "__")
         end
         return
     end
@@ -1129,9 +1094,9 @@ if lowerMsg == "soldier" or lowerMsg == "poplu" then
             local customDelay = tonumber(delayBox.Text)
             local clearPattern = clearBox.Text
             
-            -- Validate delay - now 0.001 to 10
-            if customDelay and (customDelay < 0.001 or customDelay > 10) then
-                sendChat("Delay must be between 0.001 and 10 seconds", "__")
+            -- Validate delay
+            if customDelay and (customDelay < 0.01 or customDelay > 10) then
+                sendChat("Delay must be between 0.01 and 10 seconds", "__")
                 return
             end
             
@@ -1146,11 +1111,11 @@ if lowerMsg == "soldier" or lowerMsg == "poplu" then
                 if running then
                     if isNoCooldownMode then
                         -- Use fast start for no cooldown mode
-                        task.spawn(fastStartSpam, targetName, customDelay, clearPattern, currentSpamLineIndex)
+                        task.spawn(fastStartSpam, targetName, customDelay, clearPattern)
                     else
-                        task.spawn(loopTask, targetName, customDelay, clearPattern, currentSpamLineIndex)
+                        task.spawn(loopTask, targetName, customDelay, clearPattern)
                     end
-                    warn("Spam started by @" .. username .. " from line " .. currentSpamLineIndex)       
+                    warn("Spam started by @" .. username)       
                 end
             end)
         end   
@@ -1187,9 +1152,9 @@ toggleBtn.MouseButton1Click:Connect(function()
         local customDelay = tonumber(delayBox.Text)
         local clearPattern = clearBox.Text
         
-        -- Validate delay - now 0.001 to 10
-        if customDelay and (customDelay < 0.001 or customDelay > 10) then
-            sendChat("Delay must be between 0.001 and 10 seconds", "__")
+        -- Validate delay
+        if customDelay and (customDelay < 0.01 or customDelay > 10) then
+            sendChat("Delay must be between 0.01 and 10 seconds", "__")
             return
         end
         
@@ -1202,10 +1167,10 @@ toggleBtn.MouseButton1Click:Connect(function()
         task.delay(15, function()
             if running then
                 if isNoCooldownMode then
-                    -- Use fast start for no cooldown mode with saved line index
-                    task.spawn(fastStartSpam, targetName, customDelay, clearPattern, currentSpamLineIndex)
+                    -- Use fast start for no cooldown mode
+                    task.spawn(fastStartSpam, targetName, customDelay, clearPattern)
                 else
-                    task.spawn(loopTask, targetName, customDelay, clearPattern, currentSpamLineIndex)
+                    task.spawn(loopTask, targetName, customDelay, clearPattern)
                 end
             end
         end)
@@ -1219,9 +1184,6 @@ if savedSettings and savedSettings.enabled then
     delayBox.Text = tostring(savedSettings.delay or 1.5)
     clearBox.Text = savedSettings.pattern or "__"
     
-    -- Set current line index from saved settings
-    currentSpamLineIndex = savedSettings.lastLineIndex or 1
-    
     -- Check if we should auto-start
     if savedSettings.targetName and savedSettings.targetName ~= "" then
         task.wait(2) -- Wait a bit after joining
@@ -1230,19 +1192,18 @@ if savedSettings and savedSettings.enabled then
         local targetName = savedSettings.targetName
         local customDelay = savedSettings.delay
         local clearPattern = savedSettings.pattern
-        local startLine = currentSpamLineIndex
         
         running = true 
         toggleBtn.Text = "■ Stop" 
         toggleBtn.BackgroundColor3 = Color3.fromRGB(255,50,50)
         
-        warn("🚀 Auto-starting spam from saved settings (Line: " .. startLine .. ")")
+        warn("🚀 Auto-starting spam from saved settings")
         
         -- Start immediately without delay
         if isNoCooldownMode then
-            task.spawn(fastStartSpam, targetName, customDelay, clearPattern, startLine)
+            task.spawn(fastStartSpam, targetName, customDelay, clearPattern)
         else
-            task.spawn(loopTask, targetName, customDelay, clearPattern, startLine)
+            task.spawn(loopTask, targetName, customDelay, clearPattern)
         end
     end
 end
